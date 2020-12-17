@@ -17,7 +17,7 @@ const config                = require('../config/config.json')[env];
 const BCRYPT_SALT_ROUNDS    = 12;
 //const formidable            = require('formidable');
 //const { type }              = require('os');
-//Declare controller methods
+//Declare controller methods   
 
 //-----------------------------------------------------------------------
 //---------------- API Required Field Validation ------------------------
