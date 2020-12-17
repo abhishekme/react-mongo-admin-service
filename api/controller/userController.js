@@ -9,13 +9,14 @@ const bcrypt                = require('bcrypt');
 const userModel             = require('../models/userModel');
 const theController         = userController;      
 const theConstant           = constants[0].application;
-const fs                    = require('fs');
+//const fs                    = require('fs');
+const path                  = require('path');
 const env                   = process.env.NODE_ENV || 'development';
 const config                = require('../config/config.json')[env];
-const bodyParser        = require("body-parser");
-const BCRYPT_SALT_ROUNDS = 12;
-const formidable = require('formidable');
-const { type } = require('os');
+//const bodyParser            = require("body-parser");
+const BCRYPT_SALT_ROUNDS    = 12;
+//const formidable            = require('formidable');
+//const { type }              = require('os');
 //Declare controller methods
 
 //-----------------------------------------------------------------------
@@ -59,21 +60,23 @@ exports.validate = (method) => {
 }
 
 /***********************************
- * () => API POST Request Validation
+ * () => API Request Method Validation
  * 
  */
 exports.apiValidation   = function(req,resp){
-    console.log("Enter...bod: ", typeof req.body);
+    //console.log("Enter...bod: ", req.body);
     const errors          = validationResult(req);
     var validationErr     = [];
     var validationErrMesg = [];
+
+    //console.log("@Valid Errorrs: ", errors);
     errors.array().forEach(error => {
+        console.log("#>>> ", error, " :: ", error.param);
         let found = validationErr.filter(errItem => error.param === errItem.param);
         if (!found.length) {
           validationErr.push(error);
         }       
     });
-    console.log(validationErr);
     if(validationErr.length){
       validationErr.forEach(rec => {
          validationErrMesg.push({field: rec.param, message: rec.msg});
@@ -97,14 +100,17 @@ exports.apiValidation   = function(req,resp){
  */
 exports.searchUser  =   (req, resp) => {
     let getData = req.body || null;
-    let srchObject = {};
-    let pageNo    = parseInt(req.query.page) || 1;
-    let size      = parseInt(req.query.size) || 10;
-    let query     = {};
-    query.skip = size * (pageNo - 1);
-    query.limit = size;
-    console.log("sss ",srchObject);
+    let srchObject  = {};
 
+    if(req.query.page == undefined || req.query.limit == undefined){
+        resp.status(400).json({ message: 'Parameter [limit,page] Not found.',status : 0 });
+        return;
+    }
+    let pageNo      = parseInt(req.query.page) || 1;
+    let limit       = parseInt(req.query.limit) || 10;
+    let query       = {};
+    query.skip      = limit * (pageNo - 1);
+    query.limit     = limit;
     if(getData.query != undefined && getData.query != ''){
         userModel.count({$text: {$search: getData.query}},function(err,totalCount) {
             userModel.find({$text: {$search: getData.query}},{},query, (err, userRecord)=>{
@@ -112,8 +118,8 @@ exports.searchUser  =   (req, resp) => {
                     resp.status(400).json({ message: 'Database Error!',status : 0, data: [], error: err });
                     return;
                 }else {
-                    let totalPages = Math.ceil(totalCount / size);
-                    resp.status(200).json({ message: 'User Lists',status : 1, data: userRecord, totalUser:totalCount, totalPage:totalPages, limit: size });
+                    let totalPages = Math.ceil(totalCount / limit);
+                    resp.status(200).json({ message: 'User Lists',status : 1, data: userRecord, totalUser:totalCount, totalPage:totalPages, limit: limit });
                     return;
                 }
             })
@@ -131,24 +137,29 @@ exports.searchUser  =   (req, resp) => {
  * 
  */
 exports.getUserList  =  (req, resp)  =>{
-  let pageNo    = parseInt(req.query.page) || 1
-  let size      = parseInt(req.query.size) || 10
+    if(req.query.page == undefined || req.query.limit == undefined){
+        resp.status(400).json({ message: 'Parameter [limit,page] Not found.',status : 0 });
+        return;
+    }  
+  let pageNo    = parseInt(req.query.page) || 1;
+  let limit      = parseInt(req.query.limit) || 10;
   let query     = {};
   let response;
+    
     if(pageNo < 0 || pageNo === 0) {
         let response = {status : 0, message : "invalid page number, should start with 1"};
         return resp.status(401).json(response);
     }
-    query.skip = size * (pageNo - 1);
-    query.limit = size;
+    query.skip  = limit * (pageNo - 1);
+    query.limit = limit;
     userModel.count({},function(err,totalCount) {
         userModel.find({},{},query,function(err,userRecord) {
                 if(err) {
                     resp.status(400).json({ message: 'Database Error!',status : 0, data: [], error: err });
                     return;
                 } else {
-                    let totalPages = Math.ceil(totalCount / size);
-                    resp.status(200).json({ message: 'User Lists',status : 1, data: userRecord, totalUser:totalCount, totalPage:totalPages, limit: size });
+                    let totalPages = Math.ceil(totalCount / limit);
+                    resp.status(200).json({ message: 'User Lists',status : 1, data: userRecord, totalUser:totalCount, totalPage:totalPages, limit: limit });
                     return;
                 }
             });
@@ -231,18 +242,42 @@ exports.login   =   (req, resp) => {
  * @password    -   required
  * 
  */
-exports.create  = (req, resp, next) => {    
-
-    
+exports.create  = (req, resp, next) => {   
 
     //Add required validation
     var validReturn   = theController.apiValidation(req, resp);
     if(validReturn) return;
     
-        var getData    = req.body || null;
+    var getData         = req.body || null;
+    let getFiles        =   req.files || null;    
+    let userAvatarFile  = '';
+    let extName         = '';
+    let baseName        = '';
+    let uploadDir       = '';
+
+    ///Uploading files configuration
+    if(getFiles != null && typeof getFiles == 'object'){
+        userAvatarFile  = req.files.file;
+        extName         = path.extname(userAvatarFile.name.toString());
+        baseName        = path.basename(userAvatarFile.name, extName);
+        uploadDir       = path.join('public/upload/user-avatar/', userAvatarFile.name);
+
+        let imgList = ['.png','.jpg','.jpeg','.gif'];
+        // Checking the file type
+        if(!imgList.includes(extName)){
+            //fs.unlinkSync(userAvatarFile.tempFilePath);
+           resp.status(422).json({ message: "File name should be [png|jpes|jpg|gif]", status : 0});
+           return;
+        }
+        //Max upload size 1MB
+        if(userAvatarFile.size > 1048576){
+            //fs.unlinkSync(userAvatarFile.tempFilePath);
+            resp.status(413).json({ message: "File size is larger, Maximum 1MB allowed", status : 0});
+            return;
+        }
+    }
     if(typeof getData === 'object'){
         var getEmail   = getData.email || '';
-        //var getUserName    = getData.username;
         if(getEmail){
            userModel.find({email: getEmail}, function(err, user) 
             {
@@ -255,17 +290,37 @@ exports.create  = (req, resp, next) => {
                     resp.status(400).json({ message: theConstant.variables.email_or_username_exists, record : user });
                     return;
                 }
-                if(user.length == 0){
+                if(user.length == 0){                    
                     //Create HASH Password
                     bcrypt.hash(getData.password, BCRYPT_SALT_ROUNDS)
                         .then(function(hashedPassword) {
-                            console.log("#Password: ", getData.password, " :: ", hashedPassword);
-                            //return usersDB.saveUser(username, hashedPassword);
-                            getData.password = hashedPassword;
+                            getData.password = hashedPassword;                            
                             userModel.create(getData).then(insertRecord => {
                                 if(insertRecord._id != undefined && insertRecord._id != ''){
-                                    resp.status(200).json({ message: 'Record Inserted!',status : 1, record: insertRecord });
-                                    return;
+                                    let userId = insertRecord._id;
+                                    let updateData = {};
+                                    //Uploading file
+                                    if(userAvatarFile != ''){
+                                        uploadDir = path.join('public/upload/user-avatar/', baseName + '_' + userId + extName);
+                                        updateData['user_avatar'] = baseName + '_' + userId + extName;
+                                        userAvatarFile.mv(uploadDir, (err) => {
+                                            if (err){                                            
+                                                resp.status(400).json({ message: "File Upload Error!", status : 0, error: err });
+                                            }
+                                        });                                        
+                                        userModel.findOneAndUpdate({_id: userId}, updateData, function (err, userData) {
+                                            console.log(">>>Update Avatar User: ", userData._id, " :: ", insertRecord._id);
+                                            if(err)
+                                            {
+                                                resp.status(400).json({ message: "File Upload Error", status : 0, error: err });
+                                                return;
+                                            }
+                                            if(userData._id != undefined && userData._id != ''){                                                
+                                                resp.status(200).json({ message: 'Record Inserted!',status : 1, record: userData });
+                                                return;
+                                            }
+                                        });                                
+                                    }
                                 }
                             })
                         })
@@ -276,13 +331,6 @@ exports.create  = (req, resp, next) => {
                         resp.status(400).json({ message: "DB Insert Error!", status : 0, error: err });
                         next();
                     });
-                    // return;
-                    // userModel.create(getData).then(insertRecord => {
-                    //     if(insertRecord._id != undefined && insertRecord._id != ''){
-                    //         resp.status(200).json({ message: 'Record Inserted!',status : 1, record: insertRecord });
-                    //         return;
-                    //     }
-                    // })
                 }
             });
         }
@@ -290,51 +338,13 @@ exports.create  = (req, resp, next) => {
      }
 }
 
-exports.isEmptyObject = (object) =>{
+exports.isEmptyObject = (object) => {
     for(let key in object){
-        //console.log(">> ",key, " -- ", object[key]);
         if(object.hasOwnProperty(key)){
             return false;
         }
     }
     return true;
-}
-
-exports.formValidation =(bodyData, resp) =>{
-    let error = [];
-    // resp.status(400).json({ message: "Delete: id params required", status : 0});
-    console.log("@Response: ", bodyData);
-    if(bodyData.post != undefined && typeof bodyData.post == 'object'){
-        bodyData = bodyData.post;
-        if(bodyData.firstName == undefined || bodyData.firstName == null || bodyData.firstName === ''){
-            error.push({
-                field : 'firstName',
-                message : 'FirstName is required'
-            })
-        }
-        if(bodyData.lastName == undefined || bodyData.lastName == null || bodyData.lastName === ''){
-            error.push({
-                field : 'lastName',
-                message : 'LastName is required'
-            })
-        }
-        if(bodyData.userName == undefined || bodyData.userName == null || bodyData.userName === ''){
-            error.push({
-                field : 'userName',
-                message : 'UserName is required'
-            })
-        }
-        if(bodyData.email == undefined || bodyData.email == null || bodyData.email === ''){
-            error.push({
-                field : 'email',
-                message : 'Email is required'
-            })
-        }
-    }
-    if(error.length > 0){
-        console.log("Error occured....", error);
-        return resp.status(400).json({errors: error, status: 0})
-    }
 }
 
 //Update User
@@ -351,41 +361,45 @@ exports.formValidation =(bodyData, resp) =>{
  */
 exports.update  = (req, resp, next) => {    
 
-    console.log(">>GET POST: ",  " == ", req.method);
+    console.log(">>GET POST: ",  " == ", req.method, " ::: ", req.files, " :: ", req.body );
 
-    /*let bodyData = {};
-    bodyData['post'] =[];
-    bodyData['file'] ={};
-    var form = formidable({ multiples: true });
-      //console.log(">>>Formidable: ", form);
-    // form.parse analyzes the incoming stream data, picking apart the different fields and files for you.
-    form.parse(req, function(err, fields, files) {
-      if (err) {
-        console.error(err.message);
-        return;
-      }
-      console.log(">>> Fields: ", fields, " -- ", typeof fields, " ::: ", req.query, "...", files);
-      if(typeof fields == 'object'){
-        bodyData['post'] = fields;
-      }
-      if(typeof files == 'object'){
-        bodyData['file'] = files;
-      }
-      req.body = bodyData['post'];
-      
-    //   theController.validate('update')
-      
-    theController.formValidation(bodyData, resp);
-
-    return;*/
-
+    //return;
     var validReturn   = theController.apiValidation(req, resp);
     if(validReturn) return;
 
 
-    let getData     = req.body || null;
-    let getParams   = req.query || null;
-    let userId      = '';
+    let getData     =   req.body || null;
+    let getParams   =   req.query || null;
+    let getFiles    =   req.files || null;    
+    let userId          = '';
+    let userAvatarFile  = '';
+    let extName = '';
+    let baseName = '';
+    let uploadDir = '';
+
+    ///Uploading files configuration
+    if(getFiles != null && typeof getFiles == 'object'){
+        userAvatarFile = req.files.file;
+        console.log("Uploading file: ", userAvatarFile, " -- ", userAvatarFile.name);
+        extName = path.extname(userAvatarFile.name.toString());
+        baseName = path.basename(userAvatarFile.name, extName);
+        uploadDir = path.join('public/upload/user-avatar/', userAvatarFile.name);
+
+        let imgList = ['.png','.jpg','.jpeg','.gif'];
+        // Checking the file type
+        if(!imgList.includes(extName)){
+            //fs.unlinkSync(userAvatarFile.tempFilePath);
+           resp.status(422).json({ message: "File name should be [png|jpes|jpg|gif]", status : 0});
+           return;
+        }
+        //Max upload size 1MB
+        if(userAvatarFile.size > 1048576){
+            //fs.unlinkSync(userAvatarFile.tempFilePath);
+            resp.status(413).json({ message: "File size is larger, Maximum 1MB allowed", status : 0});
+            return;
+        }
+    }
+
     if(getParams != undefined && typeof getParams === 'object'){
         if(getParams.id === undefined){
             resp.status(400).json({ message: "Update: id params required", status : 0});
@@ -425,7 +439,19 @@ exports.update  = (req, resp, next) => {
                             .then(function(hashedPassword) {
                                 console.log("#Password: ", getData.password, " :: ", hashedPassword);
                                 //return usersDB.saveUser(username, hashedPassword);
-                                getData.password = hashedPassword;
+                                getData.password = hashedPassword;  
+                                
+                                //Uploading file
+                                if(userAvatarFile != ''){
+                                    uploadDir = path.join('public/upload/user-avatar/', baseName + '_' + userId + extName);
+                                    getData['user_avatar'] = baseName + '_' + userId + extName;
+                                    console.log(">>>File: ", getData);
+                                    userAvatarFile.mv(uploadDir, (err) => {
+                                        if (err){                                            
+                                            resp.status(400).json({ message: "File Upload Error!", status : 0, error: err });
+                                        }
+                                    });
+                                }
                                 userModel.findOneAndUpdate({_id: userId}, getData, function (err, userData) {
                                     console.log(">>>Update User: ", userData);
                                     if(err)
@@ -434,6 +460,7 @@ exports.update  = (req, resp, next) => {
                                         return;
                                     }
                                     if(userData._id != undefined && userData._id != ''){
+                                        
                                         resp.status(200).json({ message: 'Record Updated!',status : 1, record: userData });
                                         return;
                                     }
@@ -448,6 +475,17 @@ exports.update  = (req, resp, next) => {
                         });
 
                         }else{
+                            //Uploading file
+                            if(userAvatarFile != ''){
+                                uploadDir = path.join('public/upload/user-avatar/', baseName + '_' + userId + extName);
+                                getData['user_avatar'] = baseName + '_' + userId + extName;
+                                console.log(">>>File: ", getData);
+                                userAvatarFile.mv(uploadDir, (err) => {
+                                    if (err){                                            
+                                        resp.status(400).json({ message: "File Upload Error!", status : 0, error: err });
+                                    }
+                                });
+                            }
                             userModel.findOneAndUpdate({_id: userId}, getData, function (err, userData) {
                                 console.log(">>>Update User: ", userData);
                                 if(err)
@@ -455,7 +493,7 @@ exports.update  = (req, resp, next) => {
                                     resp.status(400).json({ message: "DB Update Error", status : 0, error: err });
                                     return;
                                 }
-                                if(userData._id != undefined && userData._id != ''){
+                                if(userData._id != undefined && userData._id != ''){                                    
                                     resp.status(200).json({ message: 'Record Updated!',status : 1, record: userData });
                                     return;
                                 }
@@ -465,6 +503,16 @@ exports.update  = (req, resp, next) => {
                     }
                 }else{
                     console.log("@@@@@@@@Need to update....");
+
+                    //Uploading file
+                    uploadDir = path.join('public/upload/user-avatar/', baseName + '_' + userId + extName);
+                    getData['user_avatar'] = baseName + '_' + userId + extName;
+                    console.log(">>>File: ", getData);
+                    userAvatarFile.mv(uploadDir, (err) => {
+                        if (err){                                            
+                            resp.status(400).json({ message: "File Upload Error!", status : 0, error: err });
+                        }
+                    });
                     userModel.findOneAndUpdate({_id: userId}, getData, function (err, userData) {
                         console.log(">>>Update User: ", userData);
                         if(err)

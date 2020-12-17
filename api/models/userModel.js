@@ -34,6 +34,10 @@ var UserSchema = new Schema({
   location: {
     type: String,
     required: false
+  }, 
+  user_avatar: {
+    type: String,
+    required: false
   }
 });
 UserSchema.index({'$**': 'text'});

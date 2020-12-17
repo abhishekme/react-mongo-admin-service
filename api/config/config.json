@@ -4,18 +4,14 @@
       "password": "123",
       "database": "grocery",
       "host"    : "localhost",
-      "dialect" : "mongodb",
-      "strict"  : false,
-      "port"    : 3306,
-      "operatorsAliases": false 
+      "dialect" : "mongodb"
     },
     "production": {
-      "username": "",
-      "password": null,
-      "database": "",
-      "host"    : "",
-      "dialect" : "mysql",
-      "operatorsAliases": false
+      "username": "root",
+      "password": "123",
+      "database": "grocery",
+      "host"    : "localhost",
+      "dialect" : "mongodb"
     }
   }
   
