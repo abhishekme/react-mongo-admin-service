@@ -100,7 +100,6 @@ exports.apiValidation   = function(req,resp){
  */
 exports.searchUser  =   (req, resp) => {
     let getData = req.body || null;
-    let srchObject  = {};
 
     if(req.query.page == undefined || req.query.limit == undefined){
         resp.status(400).json({ message: 'Parameter [limit,page] Not found.',status : 0 });
@@ -320,6 +319,19 @@ exports.create  = (req, resp, next) => {
                                                 return;
                                             }
                                         });                                
+                                    }else{
+                                        userModel.findOneAndUpdate({_id: userId}, updateData, function (err, userData) {
+                                            console.log(">>>Update User: ", userData._id, " :: ", insertRecord._id);
+                                            if(err)
+                                            {
+                                                resp.status(400).json({ message: "Record Inserted Error", status : 0, error: err });
+                                                return;
+                                            }
+                                            if(userData._id != undefined && userData._id != ''){                                                
+                                                resp.status(200).json({ message: 'Record Inserted!',status : 1, record: userData });
+                                                return;
+                                            }
+                                        });
                                     }
                                 }
                             })
